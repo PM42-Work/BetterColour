@@ -107,7 +107,6 @@ class LIGHTINGMOD_OT_draw_gradient(bpy.types.Operator):
             ng = bpy.data.node_groups.get("LightingModGradient")
         
         ramp = ng.nodes["Ramp"].color_ramp
-        layer_idx = int(sc.effector_target_layer) + 1
         prop = utils.TARGET_COLOR_PROP
         
         # Init Evaluator (Handles Curve, Split, etc.)

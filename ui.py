@@ -28,7 +28,7 @@ class LIGHTINGMOD_UL_spark_profiles(bpy.types.UIList):
         row.label(text=item.style.capitalize())
 
 class LIGHTINGMOD_PT_panel(bpy.types.Panel):
-    bl_label="Advanced Lighting"; bl_space_type='VIEW_3D'; bl_region_type='UI'; bl_category="Advanced Lighting"
+    bl_label="Better Colour"; bl_space_type='VIEW_3D'; bl_region_type='UI'; bl_category="Better Colour"
 
     def draw(self, context):
         sc=context.scene; layout=self.layout
@@ -165,9 +165,10 @@ class LIGHTINGMOD_PT_panel(bpy.types.Panel):
             box.prop(sc,"domain_object"); box.template_list("LIGHTINGMOD_UL_effector_colors","",sc,"effector_colors",sc,"effector_colors_index",rows=3)
             row=box.row(align=True); row.operator("lightingmod.effector_color_add",icon='ADD',text=""); row.operator("lightingmod.effector_color_remove",icon='REMOVE',text="")
 
-        elif tp=='MOVIE':
-            box.prop(sc,"image_texture"); box.prop(sc,"new_uv_map_name")
-            box.operator("lightingmod.generate_uv",icon='GROUP_UVS'); box.prop(sc,"movie_uv_map"); box.prop(sc,"movie_step")
+        elif tp == 'MOVIE':
+            box.label(text="Viewport Projection", icon='RESTRICT_VIEW_OFF')
+            box.label(text="Note: Bakes based on your current 3D camera angle.", icon='INFO')
+            box.prop(sc, "movie_step")
 
         box.operator("lightingmod.apply_effectors", text="Apply")
 

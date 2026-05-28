@@ -1,7 +1,7 @@
 bl_info = {
     "name": "BetterColour",
     "author": "Raghuvansh Agarwal",
-    "version": (2, 0, 0),
+    "version": (2, 0, 1),
     "blender": (4, 3, 0),
     "location": "View3D > Sidebar > Better Colour",
     "description": "Improved drone color & effector controls",
@@ -103,13 +103,7 @@ def register():
     sc.effector_colors = CollectionProperty(type=properties.LightingModEffectorColorItem)
     sc.effector_colors_index = IntProperty(default=0)
 
-    sc.new_uv_map_name = StringProperty(name="UV Name", default="LIGHTINGMOD")
-    sc.movie_uv_map = EnumProperty(
-        name="UV Map",
-        items=lambda self, context: [(uv.name,uv.name,"") for uv in (context.object.data.uv_layers if context.object and context.object.type=='MESH' else [])]
-    )
     sc.movie_step = IntProperty(name="Step", default=1, min=1)
-    sc.image_texture = PointerProperty(name="Image", type=bpy.types.Image)
 
     sc.gradient_mode = EnumProperty(
         name="Mode",
@@ -177,10 +171,7 @@ def unregister():
     del bpy.types.Scene.effector_duration
     del bpy.types.Scene.effector_colors
     del bpy.types.Scene.effector_colors_index
-    del bpy.types.Scene.new_uv_map_name
-    del bpy.types.Scene.movie_uv_map
     del bpy.types.Scene.movie_step
-    del bpy.types.Scene.image_texture
     del bpy.types.Scene.gradient_mode
     del bpy.types.Scene.gradient_ng
     del bpy.types.Scene.curve_object

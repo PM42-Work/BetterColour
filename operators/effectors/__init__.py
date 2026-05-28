@@ -10,7 +10,7 @@ classes = (
     domain.LIGHTINGMOD_OT_domain_effector,
     
     movie.LIGHTINGMOD_OT_movie_sampler,
-    movie.LIGHTINGMOD_OT_generate_uv,
+    # <--- Removed LIGHTINGMOD_OT_generate_uv from here
     
     offset.LIGHTINGMOD_OT_draw_offset_line,
     offset.LIGHTINGMOD_OT_offset_keyframes,
@@ -22,7 +22,6 @@ classes = (
     management.LIGHTINGMOD_OT_set_start_frame,
     management.LIGHTINGMOD_OT_set_end_frame,
     
-    # --- NEW: Registered Profile Operators ---
     management.LIGHTINGMOD_OT_spark_profile_add,
     management.LIGHTINGMOD_OT_spark_profile_remove,
     

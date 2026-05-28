@@ -74,12 +74,12 @@ class LIGHTINGMOD_OT_update_addon(bpy.types.Operator):
             assets = release_data.get('assets', [])
             download_url = None
             for asset in assets:
-                if asset.get('name') == 'AdvancedLighting.zip':
+                if asset.get('name') == 'BetterColour.zip':
                     download_url = asset.get('browser_download_url')
                     break
                     
             if not download_url:
-                self.report({'ERROR'}, f"No AdvancedLighting.zip found in release {tag_name}.")
+                self.report({'ERROR'}, f"No BetterColour.zip found in release {tag_name}.")
                 return {'CANCELLED'}
 
             self.report({'INFO'}, f"Downloading update {tag_name}...")
@@ -97,7 +97,7 @@ class LIGHTINGMOD_OT_update_addon(bpy.types.Operator):
                     zip_ref.extractall(temp_dir)
                     
                 # The folder inside the zip built by your GitHub action
-                inner_folder = os.path.join(temp_dir, "AdvancedLighting")
+                inner_folder = os.path.join(temp_dir, "BetterColour")
                 
                 # Copy and overwrite files (dirs_exist_ok=True preserves dependencies folder)
                 shutil.copytree(inner_folder, addon_dir, dirs_exist_ok=True)

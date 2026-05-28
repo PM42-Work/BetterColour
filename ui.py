@@ -174,7 +174,7 @@ class LIGHTINGMOD_PT_panel(bpy.types.Panel):
 
 
 class LIGHTINGMOD_PT_drone_groups(bpy.types.Panel):
-    bl_label="Formations & Groups"; bl_space_type='VIEW_3D'; bl_region_type='UI'; bl_category="Advanced Lighting"
+    bl_label="Formations & Groups"; bl_space_type='VIEW_3D'; bl_region_type='UI'; bl_category="Better Colour"
     
     def draw(self, context):
         sc = context.scene; layout = self.layout
@@ -201,7 +201,7 @@ class LIGHTINGMOD_PT_drone_groups(bpy.types.Panel):
                 op = row.operator("lightingmod.group_select", icon='ADD', text="+"); op.additive = True
 
 class LIGHTINGMOD_PT_export(bpy.types.Panel):
-    bl_label="Export Colors"; bl_space_type='VIEW_3D'; bl_region_type='UI'; bl_category="Advanced Lighting"
+    bl_label="Export Colors"; bl_space_type='VIEW_3D'; bl_region_type='UI'; bl_category="Better Colour"
     def draw(self, context):
         sc=context.scene; layout=self.layout
         layout.prop(sc,"export_folder",text="CSV Folder")

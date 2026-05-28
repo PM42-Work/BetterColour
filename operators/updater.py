@@ -14,7 +14,7 @@ class LIGHTINGMOD_OT_update_addon(bpy.types.Operator):
 
     def execute(self, context):
         # 1. Provide your standard GitHub Repo URL here
-        repo_url = "https://github.com/PM42-Work/Lightingmod"
+        repo_url = "https://github.com/PM42-Work/BetterColour"
         
         # 2. Extract the username and repo automatically
         parts = repo_url.rstrip("/").split("/")

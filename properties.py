@@ -2,11 +2,22 @@ import bpy
 from bpy.props import (StringProperty, EnumProperty, FloatProperty, BoolProperty, FloatVectorProperty, CollectionProperty, IntProperty)
 from . import utils
 
+# --- Palette Properties ---
+class LightingModColorPaletteItem(bpy.types.PropertyGroup):
+    name: StringProperty(name="Name", default="Saved Color")
+    color: FloatVectorProperty(name="Color", subtype='COLOR', size=3, min=0.0, max=1.0)
+
+class LightingModGradientStop(bpy.types.PropertyGroup):
+    pos: FloatProperty(name="Position")
+    color: FloatVectorProperty(name="Color", subtype='COLOR', size=3, min=0.0, max=1.0)
+
+class LightingModGradientPaletteItem(bpy.types.PropertyGroup):
+    name: StringProperty(name="Name", default="Saved Gradient")
+    stops: CollectionProperty(type=LightingModGradientStop)
+
+# --- Standard Properties ---
 class LightingModEffectorColorItem(bpy.types.PropertyGroup):
-    color: FloatVectorProperty(
-        name="Color", subtype='COLOR', size=4,
-        min=0.0, max=1.0, default=(1,1,1,1)
-    )
+    color: FloatVectorProperty(name="Color", subtype='COLOR', size=4, min=0.0, max=1.0, default=(1,1,1,1))
 
 class LightingModTemporalStage(bpy.types.PropertyGroup):
     name: StringProperty(name="Name", default="Stage")
@@ -17,11 +28,7 @@ class LightingModTemporalStage(bpy.types.PropertyGroup):
 
 class LightingModSparkProfile(bpy.types.PropertyGroup):
     name: StringProperty(name="Profile Name", default="Profile")
-    style: EnumProperty(
-        name="Style",
-        items=[('PULSE', 'Pulse', ''), ('TWINKLE', 'Twinkle', '')],
-        default='PULSE'
-    )
+    style: EnumProperty(items=[('PULSE', 'Pulse', ''), ('TWINKLE', 'Twinkle', '')], default='PULSE')
     weight: FloatProperty(name="Weight", min=0.0, default=1.0)
     lifespan: IntProperty(name="Lifespan", min=1, default=10)
     colors: CollectionProperty(type=LightingModEffectorColorItem)
@@ -41,16 +48,12 @@ class LightingModFormation(bpy.types.PropertyGroup):
     groups_index: IntProperty(default=0)
 
 classes = (
-    LightingModEffectorColorItem,
-    LightingModTemporalStage,
-    LightingModSparkProfile, 
-    LightingModDroneRef,
-    LightingModDroneGroup,
-    LightingModFormation,
+    LightingModColorPaletteItem, LightingModGradientStop, LightingModGradientPaletteItem,
+    LightingModEffectorColorItem, LightingModTemporalStage, LightingModSparkProfile, 
+    LightingModDroneRef, LightingModDroneGroup, LightingModFormation,
 )
 
 def register():
     for cls in classes: bpy.utils.register_class(cls)
-
 def unregister():
     for cls in reversed(classes): bpy.utils.unregister_class(cls)

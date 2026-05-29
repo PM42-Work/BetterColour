@@ -23,7 +23,6 @@ class LIGHTINGMOD_OT_movie_sampler(bpy.types.Operator, ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        # We must be in the 3D viewport to grab the projection matrix
         return context.area and context.area.type == 'VIEW_3D'
 
     def invoke(self, context, event):
@@ -64,10 +63,8 @@ class LIGHTINGMOD_OT_movie_sampler(bpy.types.Operator, ImportHelper):
         vid_aspect = vid_w / max(1, vid_h)
 
         # 3. CACHE FLIGHT PATHS & FIND 2D BOUNDING BOX
-        # We use the region's perspective matrix to flatten 3D points to the user's screen
         proj_matrix = context.region_data.perspective_matrix
-        
-        drone_paths = {} # { drone_name: { frame: (x_ndc, y_ndc) } }
+        drone_paths = {} 
         min_x, max_x = float('inf'), float('-inf')
         min_y, max_y = float('inf'), float('-inf')
 
@@ -77,7 +74,6 @@ class LIGHTINGMOD_OT_movie_sampler(bpy.types.Operator, ImportHelper):
             drone_paths[d.name] = {}
             anim = getattr(d, "animation_data", None)
             
-            # Fetch F-Curves for position
             fcurves = [None, None, None]
             if anim and anim.action:
                 fcurves = [anim.action.fcurves.find('["Absolute_Position"]', index=i) for i in range(3)]
@@ -89,83 +85,117 @@ class LIGHTINGMOD_OT_movie_sampler(bpy.types.Operator, ImportHelper):
                 py = fcurves[1].evaluate(f) if fcurves[1] else py_base
                 pz = fcurves[2].evaluate(f) if fcurves[2] else pz_base
                 
-                # Multiply 3D vector by Viewport Projection Matrix (4x4)
                 vec4 = proj_matrix @ mathutils.Vector((px, py, pz, 1.0))
                 
-                # Normalize Device Coordinates (NDC) -> Maps to range [-1.0, 1.0]
-                if vec4.w != 0:
+                if vec4.w > 0.001: 
                     nx, ny = vec4.x / vec4.w, vec4.y / vec4.w
+                    min_x = min(min_x, nx)
+                    max_x = max(max_x, nx)
+                    min_y = min(min_y, ny)
+                    max_y = max(max_y, ny)
                 else:
-                    nx, ny = 0.0, 0.0
-                    
-                drone_paths[d.name][f] = (nx, ny)
+                    nx, ny = -9999.0, -9999.0 
                 
-                min_x = min(min_x, nx)
-                max_x = max(max_x, nx)
-                min_y = min(min_y, ny)
-                max_y = max(max_y, ny)
+                drone_paths[d.name][f] = (nx, ny)
+
+        if min_x == float('inf'):
+            min_x, max_x = -1.0, 1.0
+            min_y, max_y = -1.0, 1.0
 
         # 4. CALCULATE "COVER" MAPPING
-        # Swarm Dimensions in Viewport space
-        swarm_w = max_x - min_x
-        swarm_h = max_y - min_y
-        if swarm_w == 0: swarm_w = 1.0
-        if swarm_h == 0: swarm_h = 1.0
+        swarm_w = max(1.0, max_x - min_x)
+        swarm_h = max(1.0, max_y - min_y)
         swarm_aspect = swarm_w / swarm_h
         
-        # Center of the swarm in NDC
-        cx = (min_x + max_x) / 2.0
-        cy = (min_y + max_y) / 2.0
+        cx, cy = (min_x + max_x) / 2.0, (min_y + max_y) / 2.0
         
-        # "Cover" Logic: We scale the video's normalized bounds to fully encompass the swarm
         if vid_aspect > swarm_aspect:
-            # Video is wider. Match height, let width bleed off edges.
-            map_h = swarm_h
-            map_w = swarm_h * vid_aspect
+            map_h, map_w = swarm_h, swarm_h * vid_aspect
         else:
-            # Video is taller. Match width, let height bleed off edges.
-            map_w = swarm_w
-            map_h = swarm_w / vid_aspect
+            map_w, map_h = swarm_w, swarm_w / vid_aspect
 
-        # Mapping Boundaries for UV interpolation
         map_min_x = cx - (map_w / 2.0)
         map_min_y = cy - (map_h / 2.0)
 
-        # 5. SAMPLE VIDEO PIXELS
-        self.report({'INFO'}, "Sampling Video Frames...")
-        drone_colors = {d.name: [] for d in drones}
+        # ---------------------------------------------------------
+        # 5. VECTORIZED PRE-CALCULATION (C-Level Array Initialization)
+        # ---------------------------------------------------------
+        self.report({'INFO'}, "Pre-calculating Pixel Coordinates...")
         
-        for f in frames:
-            video_frame = max(0, f - 1)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, video_frame)
-            ret, frame_img = cap.read()
+        num_frames = len(frames)
+        num_drones = len(drones)
+        drone_names = [d.name for d in drones]
+        
+        # Pre-allocate fast NumPy grids
+        px_coords = np.zeros((num_frames, num_drones, 2), dtype=np.int32)
+        valid_mask = np.zeros((num_frames, num_drones), dtype=bool)
+        sampled_colors = np.zeros((num_frames, num_drones, 3), dtype=np.float32)
+        
+        # Pre-compute all drone pixel coordinates outside of the video decoding loop
+        for f_idx, f in enumerate(frames):
+            for d_idx, d_name in enumerate(drone_names):
+                nx, ny = drone_paths[d_name][f]
+                
+                if nx != -9999.0:
+                    u = (nx - map_min_x) / map_w
+                    v = (ny - map_min_y) / map_h
+                    
+                    px_x = int(u * (vid_w - 1))
+                    px_y = int((1.0 - v) * (vid_h - 1))
+                    
+                    if 0 <= px_x < vid_w and 0 <= px_y < vid_h:
+                        px_coords[f_idx, d_idx, 0] = px_x
+                        px_coords[f_idx, d_idx, 1] = px_y
+                        valid_mask[f_idx, d_idx] = True
+
+        # ---------------------------------------------------------
+        # 6. VECTORIZED VIDEO SAMPLING
+        # ---------------------------------------------------------
+        self.report({'INFO'}, "Sampling Video Frames...")
+        current_vid_frame = 0
+        
+        for f_idx, f in enumerate(frames):
+            target_vid_frame = max(0, f - 1)
             
-            for d in drones:
-                if not ret:
-                    drone_colors[d.name].append((0.0, 0.0, 0.0))
-                    continue
+            # Fast-seek logic (bypass full frame decoding when skipping)
+            if target_vid_frame < current_vid_frame:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, target_vid_frame)
+                current_vid_frame = target_vid_frame
                 
-                nx, ny = drone_paths[d.name][f]
+            while current_vid_frame < target_vid_frame:
+                cap.grab()
+                current_vid_frame += 1
                 
-                # Interpolate from Map Bounds to 0.0-1.0
-                u = (nx - map_min_x) / map_w
-                v = (ny - map_min_y) / map_h
-                
-                # Convert to Pixel Coordinates (OpenCV Y is inverted)
-                px_x = int(u * (vid_w - 1))
-                px_y = int((1.0 - v) * (vid_h - 1))
-                
-                if 0 <= px_x < vid_w and 0 <= px_y < vid_h:
-                    b, g, r = frame_img[px_y, px_x]
-                    drone_colors[d.name].append((r/255.0, g/255.0, b/255.0))
-                else:
-                    drone_colors[d.name].append((0.0, 0.0, 0.0)) # Out of bounds (Black)
+            ret, frame_img = cap.retrieve()
+            current_vid_frame += 1
+            
+            if not ret: continue
+            
+            # Extraction Arrays
+            x_coords = px_coords[f_idx, :, 0]
+            y_coords = px_coords[f_idx, :, 1]
+            mask = valid_mask[f_idx, :]
+            
+            if not np.any(mask): continue
+            
+            # --- MAGIC HAPPENS HERE ---
+            # Slice all required pixels simultaneously in C using Advanced Indexing
+            # frame_img is shape (H, W, 3) in BGR order
+            bgr_colors = frame_img[y_coords[mask], x_coords[mask]]
+            
+            # Convert BGR to RGB, normalize to 0.0-1.0, and map back to our storage array
+            sampled_colors[f_idx, mask, 0] = bgr_colors[:, 2] / 255.0 # Red
+            sampled_colors[f_idx, mask, 1] = bgr_colors[:, 1] / 255.0 # Green
+            sampled_colors[f_idx, mask, 2] = bgr_colors[:, 0] / 255.0 # Blue
         
         cap.release()
         
-        # 6. INJECT F-CURVES
+        # Format for F-Curve Injection
+        drone_colors = {drone_names[i]: sampled_colors[:, i, :] for i in range(num_drones)}
+        
+        # 7. INJECT F-CURVES
         self.save_keyframes(context, drones, frames, drone_colors)
-        self.report({'INFO'}, f"Successfully projected video onto {len(drones)} drones.")
+        self.report({'INFO'}, f"Successfully projected video onto {num_drones} drones.")
         return {'FINISHED'}
 
     def save_keyframes(self, context, drones, frames, drone_colors):
@@ -174,27 +204,25 @@ class LIGHTINGMOD_OT_movie_sampler(bpy.types.Operator, ImportHelper):
         
         for d in drones:
             colors = drone_colors.get(d.name)
-            if not colors: continue
+            if colors is None: continue
             
             if prop_name not in d.keys(): d[prop_name] = [0.0, 0.0, 0.0, 1.0]
             if not d.animation_data: d.animation_data_create()
             if not d.animation_data.action: d.animation_data.action = bpy.data.actions.new(name=f"{d.name}Action")
             action = d.animation_data.action
             
-            c_np = np.array(colors, dtype=np.float32)
             f_np = np.array(frames, dtype=np.float32)
             
             for i in range(3):
                 fc = action.fcurves.find(data_path=data_path, index=i)
                 if not fc: fc = action.fcurves.new(data_path=data_path, index=i)
                 
-                # Combine old keys (outside our range) with new keys
                 existing = []
                 for kp in fc.keyframe_points:
                     if kp.co[0] < frames[0] or kp.co[0] > frames[-1]:
                         existing.append((kp.co[0], kp.co[1]))
                 
-                new_keys = np.column_stack((f_np, c_np[:, i]))
+                new_keys = np.column_stack((f_np, colors[:, i]))
                 if existing:
                     all_keys = np.vstack((existing, new_keys))
                     all_keys = all_keys[all_keys[:, 0].argsort()]

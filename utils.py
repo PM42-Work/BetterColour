@@ -1,7 +1,6 @@
 import bpy
 
 # --- CONFIGURATION ---
-# The name of the custom property on the objects where color is written.
 TARGET_COLOR_PROP = "md_layer_1" 
 
 last_batch_history = {}
@@ -22,12 +21,18 @@ def set_editor_filter_for_layer(context, prop_name: str):
 
 def ensure_gradient_nodegroup():
     ng = bpy.data.node_groups.get("LightingModGradient")
-    if not ng:
-        ng = bpy.data.node_groups.new("LightingModGradient", 'ShaderNodeTree')
+    if not ng: ng = bpy.data.node_groups.new("LightingModGradient", 'ShaderNodeTree')
     if "Ramp" not in ng.nodes:
         ramp = ng.nodes.new('ShaderNodeValToRGB')
-        ramp.name = "Ramp"
-        ramp.label = "Gradient Ramp"
+        ramp.name = "Ramp"; ramp.label = "Gradient Ramp"
+    return ng
+
+def ensure_gradient_preview_nodegroup():
+    ng = bpy.data.node_groups.get("LightingModGradientPreview")
+    if not ng: ng = bpy.data.node_groups.new("LightingModGradientPreview", 'ShaderNodeTree')
+    if "Ramp" not in ng.nodes:
+        ramp = ng.nodes.new('ShaderNodeValToRGB')
+        ramp.name = "Ramp"; ramp.label = "Preview Ramp"
     return ng
 
 def ensure_noise_nodegroup():
@@ -119,3 +124,16 @@ def update_noise_preview(context):
         for i, axis in enumerate(['x', 'y', 'z']):
             d = add_node.inputs[1].driver_add("default_value", i)
             d.driver.expression = f"frame / 24.0 * {getattr(sc.noise_direction, axis)} * {sc.noise_speed}"
+
+# --- Palette Math Helpers ---
+def hex_to_rgb(hex_str):
+    hex_str = hex_str.lstrip('#')
+    if len(hex_str) != 6: return [1.0, 1.0, 1.0]
+    return [int(hex_str[i:i+2], 16) / 255.0 for i in (0, 2, 4)]
+
+def rgb_to_hex(rgb):
+    return "#{:02X}{:02X}{:02X}".format(
+        int(max(0, min(1, rgb[0])) * 255),
+        int(max(0, min(1, rgb[1])) * 255),
+        int(max(0, min(1, rgb[2])) * 255)
+    )

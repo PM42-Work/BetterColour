@@ -1,10 +1,10 @@
 bl_info = {
     "name": "BetterColour",
     "author": "Raghuvansh Agarwal",
-    "version": (2, 0, 1),
+    "version": (2, 0, 5),
     "blender": (4, 3, 0),
     "location": "View3D > Sidebar > Better Colour",
-    "description": "Improved drone color & effector controls",
+    "description": "Improved drone color & effector controls with Palettes",
     "category": "3D View",
 }
 
@@ -37,10 +37,7 @@ from . import operators
 
 class LightingModPreferences(bpy.types.AddonPreferences):
     bl_idname = __package__
-    use_experimental_updates: BoolProperty(
-        name="Opt-in to Experimental Beta Updates",
-        default=False,
-    )
+    use_experimental_updates: BoolProperty(name="Opt-in to Experimental Beta Updates", default=False)
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "use_experimental_updates")
@@ -56,6 +53,24 @@ def _trigger_noise_preview(self, context):
     from . import utils
     utils.update_noise_preview(context)
 
+def _update_gradient_preview(self, context):
+    sc = context.scene
+    if not sc.gradient_palettes: return
+    item = sc.gradient_palettes[sc.gradient_palettes_index]
+    
+    ng = utils.ensure_gradient_preview_nodegroup()
+    ramp = ng.nodes["Ramp"].color_ramp
+    
+    for i in range(len(ramp.elements)-1, 0, -1):
+        ramp.elements.remove(ramp.elements[i])
+        
+    ramp.elements[0].position = item.stops[0].pos
+    ramp.elements[0].color = list(item.stops[0].color) + [1.0]
+    
+    for i in range(1, len(item.stops)):
+        el = ramp.elements.new(item.stops[i].pos)
+        el.color = list(item.stops[i].color) + [1.0]
+
 def register():
     bpy.utils.register_class(LightingModPreferences)
     properties.register()
@@ -63,33 +78,30 @@ def register():
     operators.register()
 
     sc = bpy.types.Scene
-    
     sc.batch_primary_color = FloatVectorProperty(subtype='COLOR',size=4,default=(1,1,1,1),min=0,max=1)
     sc.batch_secondary_color = FloatVectorProperty(subtype='COLOR',size=4,default=(0,0,0,1),min=0,max=1)
     
+    # --- Palette Props ---
+    sc.color_palettes = CollectionProperty(type=properties.LightingModColorPaletteItem)
+    sc.color_palettes_index = IntProperty(default=0)
+    sc.show_color_palettes = BoolProperty(default=False)
+    
+    sc.gradient_palettes = CollectionProperty(type=properties.LightingModGradientPaletteItem)
+    sc.gradient_palettes_index = IntProperty(default=0, update=_update_gradient_preview)
+    sc.show_gradient_palettes = BoolProperty(default=False)
+    
     sc.effector_selection_mode = EnumProperty(
-        name="Target",
-        items=[('SELECTED', "Selected Objects", ""), ('GROUP', "Active Group", "")],
-        default='SELECTED'
+        name="Target", items=[('SELECTED', "Selected Objects", ""), ('GROUP', "Active Group", "")], default='SELECTED'
     )
-
     sc.effector_type = EnumProperty(
         name="Type",
         items=[
-          ('GRADIENT','Gradient',''),
-          ('SPARKLE','Sparkle',''),
-          ('TEMPORAL_SPARKLE','Temporal Sparkle',''),
-          ('NOISE', 'Noise', ''),
-          ('DOMAIN','Domain',''),
-          ('MOVIE','Movie UV',''),
-          ('OFFSET','Offset',''),
+          ('GRADIENT','Gradient',''), ('SPARKLE','Sparkle',''), ('TEMPORAL_SPARKLE','Temporal Sparkle',''),
+          ('NOISE', 'Noise', ''), ('DOMAIN','Domain',''), ('MOVIE','Movie UV',''), ('OFFSET','Offset',''),
         ], default='SPARKLE', update=_on_effector_type_changed
     )
-
     sc.sparkle_style = EnumProperty(
-        name="Style",
-        items=[('PULSE', 'Pulse (Smooth Fade)', ''), ('TWINKLE', 'Twinkle (Sharp Pop)', '')],
-        default='PULSE'
+        name="Style", items=[('PULSE', 'Pulse (Smooth Fade)', ''), ('TWINKLE', 'Twinkle (Sharp Pop)', '')], default='PULSE'
     )
 
     sc.effector_start = IntProperty(name="Start", default=1)
@@ -99,33 +111,23 @@ def register():
     sc.effector_selected_only = BoolProperty(name="Selected Only", default=False)
     sc.domain_object = PointerProperty(name="Domain Object", type=bpy.types.Object)
     sc.effector_duration = IntProperty(name="Duration", default=10, min=0)
-
     sc.effector_colors = CollectionProperty(type=properties.LightingModEffectorColorItem)
     sc.effector_colors_index = IntProperty(default=0)
-
     sc.movie_step = IntProperty(name="Step", default=1, min=1)
 
     sc.gradient_mode = EnumProperty(
         name="Mode",
         items=[
-          ('LINEAR','Linear',''),
-          ('SPLIT','Split Linear',''),
-          ('RADIAL_2D','2D Radial',''),
-          ('RADIAL_3D','3D Radial',''),
-          ('CURVE','Curve',''),
+          ('LINEAR','Linear',''), ('SPLIT','Split Linear',''), ('RADIAL_2D','2D Radial',''),
+          ('RADIAL_3D','3D Radial',''), ('CURVE','Curve',''),
         ], default='LINEAR'
     )
     sc.gradient_ng = PointerProperty(type=bpy.types.NodeTree)
     sc.curve_object = PointerProperty(name="Curve", type=bpy.types.Object)
     sc.curve_radius = FloatProperty(name="Radius", default=0.5)
     sc.curve_mode   = EnumProperty(items=[('PER_CURVE', 'Each Curve 0-1', ''), ('GLOBAL', 'Relative to Longest', '')], default='PER_CURVE')
-    
     sc.offset_line_start = FloatVectorProperty(name="Offset Line Start", size=3, subtype='XYZ', default=(0.0, 0.0, 0.0))
     sc.offset_line_end = FloatVectorProperty(name="Offset Line End", size=3, subtype='XYZ', default=(0.0, 0.0, 0.0))
-    
-    sc.export_folder = StringProperty(name="Export Folder", subtype='DIR_PATH', default="//")
-    sc.export_filename = StringProperty(name="Filename", default="color_transfer")
-
     sc.drone_formations = CollectionProperty(type=properties.LightingModFormation)
     sc.drone_formations_index = IntProperty()
     sc.temporal_stages = CollectionProperty(type=properties.LightingModTemporalStage)
@@ -135,11 +137,9 @@ def register():
     sc.use_advanced_spark_profiles = BoolProperty(name="Use Multiple Profiles", default=False)
 
     sc.noise_type = bpy.props.EnumProperty(
-        name="Noise Type",
-        items=[('PERLIN', 'Perlin (Clouds)', ''), ('VORONOI', 'Voronoi (Cells)', '')], 
+        name="Noise Type", items=[('PERLIN', 'Perlin (Clouds)', ''), ('VORONOI', 'Voronoi (Cells)', '')], 
         default='PERLIN', update=_trigger_noise_preview
     )
-    
     sc.noise_scale = bpy.props.FloatProperty(name="Scale", default=0.02, min=0.001, update=_trigger_noise_preview)
     sc.noise_contrast = bpy.props.FloatProperty(name="Contrast", default=0.0, min=0.0, max=1.0, update=_trigger_noise_preview)
     sc.noise_direction = bpy.props.FloatVectorProperty(name="Direction", default=(0.0, 0.0, 1.0), subtype='XYZ', update=_trigger_noise_preview)
@@ -148,8 +148,7 @@ def register():
     sc.noise_fade_out = bpy.props.IntProperty(name="Fade Out", default=0, min=0)
 
     try:
-        if bpy.context:
-            utils.set_editor_filter_for_layer(bpy.context, utils.TARGET_COLOR_PROP)
+        if bpy.context: utils.set_editor_filter_for_layer(bpy.context, utils.TARGET_COLOR_PROP)
     except: pass
 
 def unregister():
@@ -160,6 +159,12 @@ def unregister():
     
     del bpy.types.Scene.batch_primary_color
     del bpy.types.Scene.batch_secondary_color
+    del bpy.types.Scene.color_palettes
+    del bpy.types.Scene.color_palettes_index
+    del bpy.types.Scene.show_color_palettes
+    del bpy.types.Scene.gradient_palettes
+    del bpy.types.Scene.gradient_palettes_index
+    del bpy.types.Scene.show_gradient_palettes
     del bpy.types.Scene.effector_selection_mode
     del bpy.types.Scene.effector_type
     del bpy.types.Scene.effector_start
@@ -179,8 +184,6 @@ def unregister():
     del bpy.types.Scene.curve_mode
     del bpy.types.Scene.offset_line_start
     del bpy.types.Scene.offset_line_end
-    del bpy.types.Scene.export_folder
-    del bpy.types.Scene.export_filename
     del bpy.types.Scene.drone_formations
     del bpy.types.Scene.drone_formations_index
     del bpy.types.Scene.temporal_stages

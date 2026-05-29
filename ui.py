@@ -1,6 +1,16 @@
 import bpy
 from . import utils
 
+class LIGHTINGMOD_UL_color_palettes(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        row = layout.row(align=True)
+        row.prop(item, "color", text="", emboss=True)
+        row.prop(item, "name", text="", emboss=False)
+
+class LIGHTINGMOD_UL_gradient_palettes(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        layout.prop(item, "name", text="", emboss=False, icon='COLOR')
+
 class LIGHTINGMOD_UL_effector_colors(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         layout.prop(item, "color", text="", emboss=True)
@@ -48,7 +58,17 @@ class LIGHTINGMOD_PT_panel(bpy.types.Panel):
         col.operator("lightingmod.batch_color_keyframe",text="Color & Keyframe")
         col.operator("lightingmod.batch_color",       text="Color Only")
         col.operator("lightingmod.keyframe_current",  text="Keyframe Current")
-        col.operator("lightingmod.undo_last_edit",    text="Undo Last Edit")
+        
+        # --- NEW: Color Palette ---
+        icon = 'TRIA_DOWN' if sc.show_color_palettes else 'TRIA_RIGHT'
+        box.prop(sc, "show_color_palettes", icon=icon, text="Color Palette", emboss=False)
+        if sc.show_color_palettes:
+            pbox = box.box()
+            pbox.template_list("LIGHTINGMOD_UL_color_palettes", "", sc, "color_palettes", sc, "color_palettes_index", rows=3)
+            row = pbox.row(align=True)
+            row.operator("lightingmod.save_color", icon='ADD', text="Save Primary")
+            row.operator("lightingmod.remove_color", icon='REMOVE', text="")
+            pbox.operator("lightingmod.apply_color", icon='RESTRICT_COLOR_OFF', text="Set as Primary")
 
         # Effectors
         box=main_col.box(); box.label(text="Effectors")
@@ -155,7 +175,29 @@ class LIGHTINGMOD_PT_panel(bpy.types.Panel):
                     box.template_color_ramp(ramp_node, "color_ramp")
                 else: 
                     box.operator("lightingmod.create_gradient_nodegroup", text="Create Ramp")
-                box.operator("lightingmod.flip_color_ramp", icon='FILE_REFRESH', text="Flip Gradient Colors")
+                    
+                # --- NEW: Gradient Library ---
+                icon = 'TRIA_DOWN' if sc.show_gradient_palettes else 'TRIA_RIGHT'
+                box.prop(sc, "show_gradient_palettes", icon=icon, text="Gradient Library", emboss=False)
+                
+                if sc.show_gradient_palettes:
+                    gbox = box.box()
+                    if not sc.gradient_palettes:
+                        gbox.operator("lightingmod.load_presets", text="Load Defaults", icon='FILE_TICK')
+                    else:
+                        gbox.template_list("LIGHTINGMOD_UL_gradient_palettes", "", sc, "gradient_palettes", sc, "gradient_palettes_index", rows=4)
+                        row = gbox.row(align=True)
+                        row.operator("lightingmod.save_gradient", icon='ADD', text="Save Active")
+                        row.operator("lightingmod.remove_gradient", icon='REMOVE', text="")
+                        
+                        # Live Preview
+                        png = utils.ensure_gradient_preview_nodegroup()
+                        pramp = png.nodes["Ramp"]
+                        pcol = gbox.column(align=True)
+                        pcol.label(text="Preview:")
+                        pcol.template_color_ramp(pramp, "color_ramp")
+                        gbox.operator("lightingmod.apply_gradient", icon='CHECKMARK', text="Apply to Active")
+
                 if sc.gradient_mode != 'CURVE': box.operator("lightingmod.draw_gradient", icon='BRUSH_DATA', text="Draw Gradient")
             else:
                 box.prop(sc, "effector_duration")
@@ -171,49 +213,43 @@ class LIGHTINGMOD_PT_panel(bpy.types.Panel):
             box.prop(sc, "movie_step")
 
         box.operator("lightingmod.apply_effectors", text="Apply")
-
-
-class LIGHTINGMOD_PT_drone_groups(bpy.types.Panel):
-    bl_label="Formations & Groups"; bl_space_type='VIEW_3D'; bl_region_type='UI'; bl_category="Better Colour"
-    
-    def draw(self, context):
-        sc = context.scene; layout = self.layout
-        layout.label(text="Formations")
-        layout.template_list("LIGHTINGMOD_UL_formations", "", sc, "drone_formations", sc, "drone_formations_index", rows=2)
-        row = layout.row(align=True)
+        
+        # Formations
+        box = main_col.box()
+        box.label(text="Formations & Groups", icon='GROUP')
+        box.template_list("LIGHTINGMOD_UL_formations", "", sc, "drone_formations", sc, "drone_formations_index", rows=2)
+        row = box.row(align=True)
         row.operator("lightingmod.formation_add", icon='ADD', text=""); row.operator("lightingmod.formation_remove", icon='REMOVE', text="")
 
         if sc.drone_formations:
             f = sc.drone_formations[sc.drone_formations_index]
-            box = layout.box(); box.label(text=f"Groups in {f.name}")
-            box.template_list("LIGHTINGMOD_UL_groups", "", f, "groups", f, "groups_index", rows=2)
-            row = box.row(align=True)
+            sub = box.box(); sub.label(text=f"Groups in {f.name}")
+            sub.template_list("LIGHTINGMOD_UL_groups", "", f, "groups", f, "groups_index", rows=2)
+            row = sub.row(align=True)
             row.operator("lightingmod.group_add", icon='ADD', text=""); row.operator("lightingmod.group_remove", icon='REMOVE', text="")
 
             if f.groups:
                 g = f.groups[f.groups_index]
-                sub = box.box(); sub.label(text=f"Drones in {g.name}")
-                sub.template_list("LIGHTINGMOD_UL_group_drones", "", g, "drones", g, "drones_index", rows=4)
-                row = sub.row(align=True)
+                sub2 = sub.box(); sub2.label(text=f"Drones in {g.name}")
+                sub2.template_list("LIGHTINGMOD_UL_group_drones", "", g, "drones", g, "drones_index", rows=4)
+                row = sub2.row(align=True)
                 row.operator("lightingmod.group_add_selected", icon='IMPORT', text="Add"); row.operator("lightingmod.group_remove_selected", icon='TRASH', text="Remove")
-                row = sub.row(align=True)
+                row = sub2.row(align=True)
                 op = row.operator("lightingmod.group_select", icon='RESTRICT_SELECT_OFF', text="Select"); op.additive = False
                 op = row.operator("lightingmod.group_select", icon='ADD', text="+"); op.additive = True
 
-class LIGHTINGMOD_PT_export(bpy.types.Panel):
-    bl_label="Export Colors"; bl_space_type='VIEW_3D'; bl_region_type='UI'; bl_category="Better Colour"
-    def draw(self, context):
-        sc=context.scene; layout=self.layout
-        layout.prop(sc,"export_folder",text="CSV Folder")
-        layout.prop(sc, "export_filename", text="Filename")
-        col = layout.column(align=True)
-        col.operator("lightingmod.export_csv_colors", text="Overwrite CSV Colors", icon='FILE_TEXT')
-        col.operator("lightingmod.export_color_transfer", text="Export Colour Transfer", icon='EXPORT')
+        # --- JSON Import/Export ---
+        box = main_col.box()
+        box.label(text="JSON Palettes", icon='OUTLINER_DATA_GPENCIL')
+        row = box.row(align=True)
+        row.operator("lightingmod.import_palettes", text="Import", icon='IMPORT')
+        row.operator("lightingmod.export_palettes", text="Export", icon='EXPORT')
 
 classes = (
+    LIGHTINGMOD_UL_color_palettes, LIGHTINGMOD_UL_gradient_palettes,
     LIGHTINGMOD_UL_effector_colors, LIGHTINGMOD_UL_formations, 
     LIGHTINGMOD_UL_groups, LIGHTINGMOD_UL_group_drones, LIGHTINGMOD_UL_temporal_stages,
-    LIGHTINGMOD_UL_spark_profiles, LIGHTINGMOD_PT_panel, LIGHTINGMOD_PT_drone_groups, LIGHTINGMOD_PT_export,
+    LIGHTINGMOD_UL_spark_profiles, LIGHTINGMOD_PT_panel,
 )
 
 def register():
